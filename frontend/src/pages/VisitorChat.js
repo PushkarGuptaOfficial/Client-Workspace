@@ -24,6 +24,8 @@ export default function VisitorChat() {
   const [isTyping, setIsTyping] = useState(false);
   const [showNameInput, setShowNameInput] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingPreview, setPendingPreview] = useState(null);
   
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -120,34 +122,81 @@ export default function VisitorChat() {
     };
   }, []);
 
-  const sendMessage = (e) => {
+  const sendMessage = async (e) => {
     e?.preventDefault();
-    if (!newMessage.trim() || !wsRef.current || !isConnected) return;
+    if ((!newMessage.trim() && !pendingFile) || !wsRef.current || !isConnected) return;
 
-    const messageData = {
-      type: 'message',
-      visitor_id: visitorId,
-      sender_name: visitorName,
-      content: newMessage.trim(),
-      message_type: 'text'
-    };
+    // If there's a pending file, upload it first
+    if (pendingFile) {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', pendingFile);
 
-    wsRef.current.send(JSON.stringify(messageData));
-    
-    // Optimistic update
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      sender_type: 'visitor',
-      sender_name: visitorName,
-      content: newMessage.trim(),
-      message_type: 'text',
-      created_at: new Date().toISOString()
-    }]);
+      try {
+        const res = await axios.post(`${API}/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
 
-    setNewMessage('');
+        const { file_url, file_name, file_type } = res.data;
+        const content = newMessage.trim() || (file_type === 'image' ? 'Shared an image' : `Shared file: ${file_name}`);
+
+        const messageData = {
+          type: 'message',
+          visitor_id: visitorId,
+          sender_name: visitorName,
+          content,
+          message_type: file_type,
+          file_url,
+          file_name
+        };
+
+        wsRef.current.send(JSON.stringify(messageData));
+
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          sender_type: 'visitor',
+          sender_name: visitorName,
+          content,
+          message_type: file_type,
+          file_url,
+          file_name,
+          created_at: new Date().toISOString()
+        }]);
+
+        clearPendingFile();
+        setNewMessage('');
+      } catch (error) {
+        console.error('Upload error:', error);
+        toast.error('Failed to upload file');
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      // Text only message
+      const messageData = {
+        type: 'message',
+        visitor_id: visitorId,
+        sender_name: visitorName,
+        content: newMessage.trim(),
+        message_type: 'text'
+      };
+
+      wsRef.current.send(JSON.stringify(messageData));
+      
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        sender_type: 'visitor',
+        sender_name: visitorName,
+        content: newMessage.trim(),
+        message_type: 'text',
+        created_at: new Date().toISOString()
+      }]);
+
+      setNewMessage('');
+    }
   };
 
-  const handleFileUpload = async (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -157,50 +206,25 @@ export default function VisitorChat() {
       return;
     }
 
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await axios.post(`${API}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      const { file_url, file_name, file_type } = res.data;
-
-      const messageData = {
-        type: 'message',
-        visitor_id: visitorId,
-        sender_name: visitorName,
-        content: file_type === 'image' ? 'Shared an image' : `Shared file: ${file_name}`,
-        message_type: file_type,
-        file_url,
-        file_name
-      };
-
-      wsRef.current.send(JSON.stringify(messageData));
-
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender_type: 'visitor',
-        sender_name: visitorName,
-        content: messageData.content,
-        message_type: file_type,
-        file_url,
-        file_name,
-        created_at: new Date().toISOString()
-      }]);
-
-      toast.success('File sent!');
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Failed to upload file');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    setPendingFile(file);
+    
+    // Create preview for images
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (imageExts.includes(ext)) {
+      const reader = new FileReader();
+      reader.onload = (e) => setPendingPreview(e.target.result);
+      reader.readAsDataURL(file);
+    } else {
+      setPendingPreview(null);
     }
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const clearPendingFile = () => {
+    setPendingFile(null);
+    setPendingPreview(null);
   };
 
   const formatTime = (dateStr) => {
@@ -354,11 +378,37 @@ export default function VisitorChat() {
 
           {/* Input Area */}
           <div className="glass-input sticky bottom-0 p-4">
+            {/* Pending File Preview */}
+            {pendingFile && (
+              <div className="max-w-2xl mx-auto mb-2">
+                <div className="flex items-center gap-2 p-2 bg-muted rounded-xl">
+                  {pendingPreview ? (
+                    <img src={pendingPreview} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Paperclip className="w-5 h-5 text-primary" />
+                    </div>
+                  )}
+                  <span className="flex-1 text-sm truncate">{pendingFile.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={clearPendingFile}
+                    data-testid="remove-file-btn"
+                    className="rounded-full h-8 w-8 shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            
             <form onSubmit={sendMessage} className="max-w-2xl mx-auto flex items-center gap-2">
               <input
                 type="file"
                 ref={fileInputRef}
-                onChange={handleFileUpload}
+                onChange={handleFileSelect}
                 className="hidden"
                 accept="image/*,.pdf,.doc,.docx,.txt"
               />
@@ -390,7 +440,7 @@ export default function VisitorChat() {
               
               <Button
                 type="submit"
-                disabled={!newMessage.trim() || !isConnected}
+                disabled={(!newMessage.trim() && !pendingFile) || !isConnected || uploading}
                 data-testid="send-message-btn"
                 className="rounded-full h-12 w-12 shrink-0"
               >
