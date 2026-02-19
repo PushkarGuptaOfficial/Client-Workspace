@@ -339,8 +339,8 @@ export default function VisitorChat() {
         </Button>
       </header>
 
-      {/* Name Input Screen */}
-      {showNameInput ? (
+          {/* Name Input Screen */}
+          {showNameInput ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
           <div className="text-center">
             <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -525,6 +525,8 @@ export default function VisitorChat() {
               </Button>
             </form>
           </div>
+            </>
+          )}
         </>
       )}
     </div>
