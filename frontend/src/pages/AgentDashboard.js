@@ -1,28 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  MessageCircle, Send, Paperclip, Moon, Sun, LogOut, Users, Clock,
-  CheckCircle, XCircle, Bell, BellOff, User, Loader2, Search, MoreVertical, X
+  MessageCircle, Send, Paperclip, Moon, Sun, LogOut,
+  Clock, User, Loader2, Search, X, ChevronLeft
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Badge } from '../components/ui/badge';
-import { Separator } from '../components/ui/separator';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -39,14 +25,12 @@ export default function AgentDashboard() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [agents, setAgents] = useState([]);
-  const [visitorTyping, setVisitorTyping] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null);
+  const [visitorTyping, setVisitorTyping] = useState(false);
+  const [mobileShowChat, setMobileShowChat] = useState(false);
   
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -80,25 +64,21 @@ export default function AgentDashboard() {
     }
   }, []);
 
-  // Fetch sessions and agents
+  // Fetch sessions
   useEffect(() => {
     if (!agent) return;
 
-    const fetchData = async () => {
+    const fetchSessions = async () => {
       try {
-        const [sessionsRes, agentsRes] = await Promise.all([
-          axios.get(`${API}/sessions`),
-          axios.get(`${API}/agents`)
-        ]);
-        setSessions(sessionsRes.data);
-        setAgents(agentsRes.data);
+        const res = await axios.get(`${API}/sessions`);
+        setSessions(res.data);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching sessions:', error);
       }
     };
 
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 10000);
     return () => clearInterval(interval);
   }, [agent]);
 
@@ -111,7 +91,6 @@ export default function AgentDashboard() {
 
     ws.onopen = () => {
       setIsConnected(true);
-      console.log('Agent WebSocket connected');
     };
 
     ws.onmessage = (event) => {
@@ -123,55 +102,31 @@ export default function AgentDashboard() {
           setVisitorTyping(false);
         }
         
-        // Update session in list
         setSessions(prev => prev.map(s => 
           s.id === data.session_id 
-            ? { ...s, last_message: data.message.content?.substring(0, 100), unread_count: s.unread_count + 1 }
+            ? { ...s, last_message: data.message.content?.substring(0, 100), updated_at: new Date().toISOString(), unread_count: (s.unread_count || 0) + 1 }
             : s
         ));
 
-        // Browser notification
-        if (notificationsEnabled && data.message.sender_type === 'visitor') {
-          showNotification('New Message', data.message.content);
+        if (data.message.sender_type === 'visitor' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('New Message', { body: data.message.content });
         }
       } else if (data.type === 'new_session') {
         setSessions(prev => [data.session, ...prev]);
-        if (notificationsEnabled) {
-          showNotification('New Chat', `${data.session.visitor_name || 'Visitor'} started a chat`);
-        }
-        toast.info('New chat waiting for assignment');
-      } else if (data.type === 'session_updated') {
+        toast.info(`New chat from ${data.session.visitor_name || 'Visitor'}`);
+      } else if (data.type === 'session_updated' || data.type === 'session_closed') {
         setSessions(prev => prev.map(s => s.id === data.session.id ? data.session : s));
-      } else if (data.type === 'session_closed') {
-        setSessions(prev => prev.map(s => s.id === data.session.id ? data.session : s));
-        if (selectedSession?.id === data.session.id) {
-          toast.info('This chat has been closed');
-        }
-      } else if (data.type === 'visitor_typing') {
-        if (data.session_id === selectedSession?.id) {
-          setVisitorTyping(true);
-          setTimeout(() => setVisitorTyping(false), 3000);
-        }
+      } else if (data.type === 'visitor_typing' && data.session_id === selectedSession?.id) {
+        setVisitorTyping(true);
+        setTimeout(() => setVisitorTyping(false), 3000);
       }
     };
 
-    ws.onclose = () => {
-      setIsConnected(false);
-      console.log('Agent WebSocket disconnected');
-    };
-
+    ws.onclose = () => setIsConnected(false);
     wsRef.current = ws;
 
-    return () => {
-      ws.close();
-    };
-  }, [agent, selectedSession?.id, notificationsEnabled]);
-
-  const showNotification = (title, body) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/favicon.ico' });
-    }
-  };
+    return () => ws.close();
+  }, [agent, selectedSession?.id]);
 
   // Load messages when session selected
   useEffect(() => {
@@ -181,12 +136,8 @@ export default function AgentDashboard() {
       try {
         const res = await axios.get(`${API}/sessions/${selectedSession.id}/messages`);
         setMessages(res.data);
-        
-        // Mark as read
         await axios.put(`${API}/sessions/${selectedSession.id}/read`);
-        setSessions(prev => prev.map(s => 
-          s.id === selectedSession.id ? { ...s, unread_count: 0 } : s
-        ));
+        setSessions(prev => prev.map(s => s.id === selectedSession.id ? { ...s, unread_count: 0 } : s));
       } catch (error) {
         console.error('Error fetching messages:', error);
       }
@@ -199,7 +150,6 @@ export default function AgentDashboard() {
     e?.preventDefault();
     if ((!newMessage.trim() && !pendingFile) || !wsRef.current || !isConnected || !selectedSession) return;
 
-    // If there's a pending file, upload it first
     if (pendingFile) {
       setUploading(true);
       const formData = new FormData();
@@ -213,16 +163,14 @@ export default function AgentDashboard() {
         const { file_url, file_name, file_type } = res.data;
         const content = newMessage.trim() || (file_type === 'image' ? 'Shared an image' : `Shared file: ${file_name}`);
 
-        const messageData = {
+        wsRef.current.send(JSON.stringify({
           type: 'message',
           session_id: selectedSession.id,
           content,
           message_type: file_type,
           file_url,
           file_name
-        };
-
-        wsRef.current.send(JSON.stringify(messageData));
+        }));
 
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
@@ -244,15 +192,12 @@ export default function AgentDashboard() {
         setUploading(false);
       }
     } else {
-      // Text only message
-      const messageData = {
+      wsRef.current.send(JSON.stringify({
         type: 'message',
         session_id: selectedSession.id,
         content: newMessage.trim(),
         message_type: 'text'
-      };
-
-      wsRef.current.send(JSON.stringify(messageData));
+      }));
       
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
@@ -270,16 +215,12 @@ export default function AgentDashboard() {
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedSession) return;
-
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      toast.error('File too large. Maximum size is 10MB.');
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File too large (max 10MB)');
       return;
     }
-
     setPendingFile(file);
-    
     const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     if (imageExts.includes(ext)) {
@@ -289,7 +230,6 @@ export default function AgentDashboard() {
     } else {
       setPendingPreview(null);
     }
-
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -302,10 +242,10 @@ export default function AgentDashboard() {
     try {
       await axios.put(`${API}/sessions/${sessionId}/assign`, { agent_id: agent.id });
       toast.success('Chat assigned to you');
-      
-      setSessions(prev => prev.map(s => 
-        s.id === sessionId ? { ...s, assigned_agent_id: agent.id, status: 'active' } : s
-      ));
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, assigned_agent_id: agent.id, status: 'active' } : s));
+      if (selectedSession?.id === sessionId) {
+        setSelectedSession(prev => ({ ...prev, assigned_agent_id: agent.id, status: 'active' }));
+      }
     } catch (error) {
       toast.error('Failed to assign chat');
     }
@@ -315,14 +255,11 @@ export default function AgentDashboard() {
     try {
       await axios.put(`${API}/sessions/${sessionId}/close`);
       toast.success('Chat closed');
-      
-      setSessions(prev => prev.map(s => 
-        s.id === sessionId ? { ...s, status: 'closed' } : s
-      ));
-      
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'closed' } : s));
       if (selectedSession?.id === sessionId) {
         setSelectedSession(null);
         setMessages([]);
+        setMobileShowChat(false);
       }
     } catch (error) {
       toast.error('Failed to close chat');
@@ -335,263 +272,182 @@ export default function AgentDashboard() {
     navigate('/agent/login');
   };
 
+  const selectSession = (session) => {
+    setSelectedSession(session);
+    setMobileShowChat(true);
+  };
+
   const formatTime = (dateStr) => {
     const date = new Date(dateStr);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+  const filteredSessions = sessions
+    .filter(s => !searchQuery || s.visitor_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
-    if (date.toDateString() === today.toDateString()) return 'Today';
-    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return date.toLocaleDateString();
-  };
-
-  const filteredSessions = sessions.filter(s => {
-    if (filterStatus !== 'all' && s.status !== filterStatus) return false;
-    if (searchQuery && !s.visitor_name?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
-
-  const getStatusBadge = (status) => {
+  const getStatusColor = (status) => {
     switch (status) {
-      case 'waiting':
-        return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Waiting</Badge>;
-      case 'active':
-        return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Active</Badge>;
-      case 'closed':
-        return <Badge variant="outline" className="bg-muted text-muted-foreground">Closed</Badge>;
-      default:
-        return null;
+      case 'waiting': return 'bg-amber-500';
+      case 'active': return 'bg-emerald-500';
+      default: return 'bg-neutral-400';
     }
   };
 
   if (!agent) return null;
 
   return (
-    <div className="agent-dashboard bg-background" data-testid="agent-dashboard">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col border-r bg-card">
-        {/* Sidebar Header */}
+    <div className="h-screen flex bg-background" data-testid="agent-dashboard">
+      {/* Sidebar - Session List */}
+      <aside className={`w-full md:w-80 lg:w-96 border-r flex flex-col ${mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
+        {/* Header */}
         <div className="p-4 border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-primary-foreground" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+                <MessageCircle className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="font-heading font-bold">Inbox</h1>
+                <p className="text-xs text-muted-foreground">{agent.name}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="font-heading font-bold text-foreground truncate">24gameapi</h1>
-              <p className="text-xs text-muted-foreground">Agent Dashboard</p>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full h-8 w-8">
+                {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full h-8 w-8 text-destructive">
+                <LogOut className="w-4 h-4" />
+              </Button>
             </div>
           </div>
-        </div>
-
-        {/* Agent Info */}
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-3">
-            <div className="online-indicator">
-              <Avatar className="w-10 h-10">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  {agent.name?.[0]?.toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm truncate">{agent.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{agent.email}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Filter */}
-        <div className="p-4 space-y-3">
+          
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search chats..."
+              placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9"
-              data-testid="search-chats-input"
+              className="pl-9 h-9 rounded-full bg-muted/50"
+              data-testid="search-input"
             />
           </div>
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="h-9" data-testid="filter-status-select">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Chats</SelectItem>
-              <SelectItem value="waiting">Waiting</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
-        {/* Chat List */}
+        {/* Session List */}
         <ScrollArea className="flex-1">
-          <div className="p-2">
-            {filteredSessions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                No chats found
-              </div>
-            ) : (
-              filteredSessions.map((session) => (
+          {filteredSessions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <MessageCircle className="w-12 h-12 mb-3 opacity-20" />
+              <p className="text-sm">No conversations yet</p>
+            </div>
+          ) : (
+            <div className="p-2">
+              {filteredSessions.map((session) => (
                 <div
                   key={session.id}
-                  onClick={() => setSelectedSession(session)}
-                  className={`session-item p-3 rounded-xl cursor-pointer mb-1 ${
-                    selectedSession?.id === session.id ? 'active' : ''
+                  onClick={() => selectSession(session)}
+                  className={`p-3 rounded-xl cursor-pointer transition-colors mb-1 ${
+                    selectedSession?.id === session.id 
+                      ? 'bg-primary/10 border border-primary/20' 
+                      : 'hover:bg-muted/50'
                   }`}
-                  data-testid={`session-item-${session.id}`}
+                  data-testid={`session-${session.id}`}
                 >
                   <div className="flex items-start gap-3">
-                    <Avatar className="w-10 h-10 shrink-0">
-                      <AvatarFallback className="bg-muted text-muted-foreground text-sm">
-                        {session.visitor_name?.[0]?.toUpperCase() || 'V'}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative">
+                      <Avatar className="w-11 h-11">
+                        <AvatarFallback className="bg-muted text-muted-foreground font-medium">
+                          {session.visitor_name?.[0]?.toUpperCase() || 'V'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(session.status)}`} />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="font-medium text-sm truncate">
+                        <span className="font-medium text-sm truncate">
                           {session.visitor_name || 'Visitor'}
-                        </p>
-                        {session.unread_count > 0 && (
-                          <span className="unread-badge">{session.unread_count}</span>
-                        )}
+                        </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatTime(session.updated_at)}
+                        </span>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      <p className="text-sm text-muted-foreground truncate mt-0.5">
                         {session.last_message || 'No messages yet'}
                       </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(session.status)}
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(session.updated_at)}
-                        </span>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {session.status === 'waiting' && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-amber-50 text-amber-600 border-amber-200">
+                            <Clock className="w-3 h-3 mr-1" /> Waiting
+                          </Badge>
+                        )}
+                        {session.unread_count > 0 && (
+                          <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded-full">
+                            {session.unread_count}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </ScrollArea>
-
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t space-y-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start"
-            onClick={() => setNotificationsEnabled(!notificationsEnabled)}
-            data-testid="toggle-notifications-btn"
-          >
-            {notificationsEnabled ? (
-              <>
-                <Bell className="w-4 h-4 mr-2" /> Notifications On
-              </>
-            ) : (
-              <>
-                <BellOff className="w-4 h-4 mr-2" /> Notifications Off
-              </>
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start"
-            onClick={toggleTheme}
-            data-testid="theme-toggle-sidebar"
-          >
-            {theme === 'light' ? (
-              <>
-                <Moon className="w-4 h-4 mr-2" /> Dark Mode
-              </>
-            ) : (
-              <>
-                <Sun className="w-4 h-4 mr-2" /> Light Mode
-              </>
-            )}
-          </Button>
-          <Separator />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start text-destructive hover:text-destructive"
-            onClick={handleLogout}
-            data-testid="logout-btn"
-          >
-            <LogOut className="w-4 h-4 mr-2" /> Logout
-          </Button>
-        </div>
       </aside>
 
-      {/* Main Chat Area */}
-      <main className="flex flex-col h-screen overflow-hidden">
+      {/* Chat Area */}
+      <main className={`flex-1 flex flex-col ${!mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
         {selectedSession ? (
           <>
             {/* Chat Header */}
-            <header className="glass-header px-4 py-3 flex items-center justify-between shrink-0">
+            <header className="px-4 py-3 border-b flex items-center justify-between bg-background">
               <div className="flex items-center gap-3">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="md:hidden rounded-full"
+                  onClick={() => setMobileShowChat(false)}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </Button>
                 <Avatar className="w-10 h-10">
-                  <AvatarFallback className="bg-muted text-muted-foreground">
+                  <AvatarFallback className="bg-muted">
                     {selectedSession.visitor_name?.[0]?.toUpperCase() || 'V'}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h2 className="font-heading font-bold text-foreground">
-                    {selectedSession.visitor_name || 'Visitor'}
-                  </h2>
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(selectedSession.status)}
-                    {selectedSession.assigned_agent_id && (
-                      <span className="text-xs text-muted-foreground">
-                        Assigned to {agents.find(a => a.id === selectedSession.assigned_agent_id)?.name || 'Agent'}
-                      </span>
-                    )}
-                  </div>
+                  <h2 className="font-heading font-semibold">{selectedSession.visitor_name || 'Visitor'}</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedSession.status === 'active' ? 'Active conversation' : 
+                     selectedSession.status === 'waiting' ? 'Waiting for response' : 'Closed'}
+                  </p>
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
                 {selectedSession.status === 'waiting' && (
-                  <Button
-                    size="sm"
-                    onClick={() => assignToMe(selectedSession.id)}
-                    data-testid="assign-to-me-btn"
-                    className="rounded-full"
-                  >
-                    <User className="w-4 h-4 mr-1" /> Take Chat
+                  <Button size="sm" onClick={() => assignToMe(selectedSession.id)} className="rounded-full" data-testid="take-chat-btn">
+                    <User className="w-4 h-4 mr-1.5" /> Take Chat
                   </Button>
                 )}
-                
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {selectedSession.status !== 'closed' && (
-                      <DropdownMenuItem
-                        onClick={() => closeSession(selectedSession.id)}
-                        className="text-destructive"
-                        data-testid="close-chat-btn"
-                      >
-                        <XCircle className="w-4 h-4 mr-2" /> Close Chat
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {selectedSession.status !== 'closed' && (
+                  <Button size="sm" variant="outline" onClick={() => closeSession(selectedSession.id)} className="rounded-full text-destructive" data-testid="close-chat-btn">
+                    Close
+                  </Button>
+                )}
               </div>
             </header>
 
-            {/* Messages Area */}
+            {/* Messages */}
             <ScrollArea className="flex-1 p-4">
-              <div className="messages-container max-w-3xl mx-auto py-2">
+              <div className="messages-container max-w-2xl mx-auto py-2">
                 {messages.map((msg, idx) => (
                   <div
                     key={msg.id || idx}
@@ -599,27 +455,19 @@ export default function AgentDashboard() {
                   >
                     {msg.sender_type === 'visitor' && (
                       <Avatar className="w-8 h-8 mr-2 mt-1 shrink-0">
-                        <AvatarFallback className="bg-muted text-muted-foreground text-xs">
+                        <AvatarFallback className="bg-muted text-xs">
                           {selectedSession.visitor_name?.[0] || 'V'}
                         </AvatarFallback>
                       </Avatar>
                     )}
                     
                     <div className={msg.sender_type === 'agent' ? 'chat-bubble-visitor' : 'chat-bubble-agent'}>
-                      {msg.sender_type === 'visitor' && (
-                        <p className="text-xs font-medium text-primary mb-1">
-                          {selectedSession.visitor_name || 'Visitor'}
-                        </p>
-                      )}
-                      
                       {msg.message_type === 'image' && msg.file_url && (
-                        <div className="file-preview mb-2">
-                          <img
-                            src={`${process.env.REACT_APP_BACKEND_URL}${msg.file_url}`}
-                            alt="Shared"
-                            className="rounded-lg max-w-full"
-                          />
-                        </div>
+                        <img
+                          src={`${process.env.REACT_APP_BACKEND_URL}${msg.file_url}`}
+                          alt="Shared"
+                          className="rounded-lg max-w-[200px] mb-2"
+                        />
                       )}
                       
                       {msg.message_type === 'file' && msg.file_url && (
@@ -634,38 +482,22 @@ export default function AgentDashboard() {
                         </a>
                       )}
                       
-                      {msg.message_type === 'text' && (
-                        <p className="text-sm">{msg.content}</p>
-                      )}
+                      {msg.message_type === 'text' && <p className="text-sm">{msg.content}</p>}
                       
-                      <p className={`text-xs mt-1 ${msg.sender_type === 'agent' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                        {formatTime(msg.created_at)}
+                      <p className={`text-[10px] mt-1.5 ${msg.sender_type === 'agent' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                    
-                    {msg.sender_type === 'agent' && (
-                      <Avatar className="w-8 h-8 ml-2 mt-1 shrink-0">
-                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                          {msg.sender_name?.[0] || 'A'}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
                   </div>
                 ))}
                 
                 {visitorTyping && (
                   <div className="message-row justify-start">
                     <Avatar className="w-8 h-8 mr-2 mt-1 shrink-0">
-                      <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                        {selectedSession.visitor_name?.[0] || 'V'}
-                      </AvatarFallback>
+                      <AvatarFallback className="bg-muted text-xs">{selectedSession.visitor_name?.[0] || 'V'}</AvatarFallback>
                     </Avatar>
                     <div className="chat-bubble-agent">
-                      <div className="typing-indicator">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
+                      <div className="typing-indicator"><span></span><span></span><span></span></div>
                     </div>
                   </div>
                 )}
@@ -674,74 +506,43 @@ export default function AgentDashboard() {
               </div>
             </ScrollArea>
 
-            {/* Input Area */}
+            {/* Input */}
             {selectedSession.status !== 'closed' && selectedSession.assigned_agent_id === agent.id && (
-              <div className="glass-input p-4 shrink-0">
-                {/* Pending File Preview */}
+              <div className="p-4 border-t bg-background">
                 {pendingFile && (
-                  <div className="max-w-3xl mx-auto mb-2">
+                  <div className="max-w-2xl mx-auto mb-2">
                     <div className="flex items-center gap-2 p-2 bg-muted rounded-xl">
                       {pendingPreview ? (
-                        <img src={pendingPreview} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
+                        <img src={pendingPreview} alt="Preview" className="w-10 h-10 rounded-lg object-cover" />
                       ) : (
-                        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <Paperclip className="w-5 h-5 text-primary" />
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Paperclip className="w-4 h-4 text-primary" />
                         </div>
                       )}
                       <span className="flex-1 text-sm truncate">{pendingFile.name}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={clearPendingFile}
-                        data-testid="agent-remove-file-btn"
-                        className="rounded-full h-8 w-8 shrink-0"
-                      >
+                      <Button variant="ghost" size="icon" onClick={clearPendingFile} className="rounded-full h-8 w-8">
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
                 )}
                 
-                <form onSubmit={sendMessage} className="max-w-3xl mx-auto flex items-center gap-2">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    accept="image/*,.pdf,.doc,.docx,.txt"
-                  />
+                <form onSubmit={sendMessage} className="max-w-2xl mx-auto flex items-center gap-2">
+                  <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*,.pdf,.doc,.docx,.txt" />
                   
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    data-testid="agent-attach-file-btn"
-                    className="rounded-full shrink-0"
-                  >
-                    {uploading ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Paperclip className="w-5 h-5" />
-                    )}
+                  <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="rounded-full shrink-0">
+                    {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
                   </Button>
                   
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder="Type a message..."
-                    data-testid="agent-message-input"
-                    className="flex-1 h-12 rounded-full"
+                    className="flex-1 h-11 rounded-full"
+                    data-testid="message-input"
                   />
                   
-                  <Button
-                    type="submit"
-                    disabled={(!newMessage.trim() && !pendingFile) || uploading}
-                    data-testid="agent-send-message-btn"
-                    className="rounded-full h-12 w-12 shrink-0"
-                  >
+                  <Button type="submit" disabled={(!newMessage.trim() && !pendingFile) || uploading} className="rounded-full h-11 w-11 shrink-0" data-testid="send-btn">
                     <Send className="w-5 h-5" />
                   </Button>
                 </form>
@@ -749,71 +550,46 @@ export default function AgentDashboard() {
             )}
 
             {selectedSession.status === 'waiting' && !selectedSession.assigned_agent_id && (
-              <div className="p-4 bg-warning/10 border-t border-warning/20 text-center">
-                <p className="text-sm text-warning font-medium">
-                  This chat is waiting for assignment. Click "Take Chat" to respond.
-                </p>
+              <div className="p-4 bg-amber-50 border-t border-amber-100 text-center">
+                <p className="text-sm text-amber-700">Click "Take Chat" to start responding</p>
               </div>
             )}
 
             {selectedSession.status === 'closed' && (
               <div className="p-4 bg-muted text-center">
-                <p className="text-sm text-muted-foreground">
-                  This chat has been closed.
-                </p>
+                <p className="text-sm text-muted-foreground">This conversation has been closed</p>
               </div>
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center mb-4">
-              <MessageCircle className="w-10 h-10 text-muted-foreground" />
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
+              <MessageCircle className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h2 className="font-heading text-xl font-bold text-foreground mb-2">
-              Select a conversation
-            </h2>
-            <p className="text-muted-foreground max-w-sm">
-              Choose a chat from the sidebar to start responding to visitors
+            <h2 className="font-heading text-lg font-semibold mb-1">Select a conversation</h2>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Choose a chat from the list to view messages and respond
             </p>
             
-            <div className="mt-8 grid grid-cols-3 gap-4 text-center">
-              <div className="p-4 rounded-xl bg-card border">
-                <Clock className="w-6 h-6 mx-auto mb-2 text-warning" />
+            <div className="flex gap-6 mt-8">
+              <div className="text-center">
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-2">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
                 <p className="text-2xl font-bold">{sessions.filter(s => s.status === 'waiting').length}</p>
                 <p className="text-xs text-muted-foreground">Waiting</p>
               </div>
-              <div className="p-4 rounded-xl bg-card border">
-                <MessageCircle className="w-6 h-6 mx-auto mb-2 text-success" />
+              <div className="text-center">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-2">
+                  <MessageCircle className="w-5 h-5 text-emerald-600" />
+                </div>
                 <p className="text-2xl font-bold">{sessions.filter(s => s.status === 'active').length}</p>
                 <p className="text-xs text-muted-foreground">Active</p>
-              </div>
-              <div className="p-4 rounded-xl bg-card border">
-                <CheckCircle className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-2xl font-bold">{sessions.filter(s => s.status === 'closed').length}</p>
-                <p className="text-xs text-muted-foreground">Closed</p>
               </div>
             </div>
           </div>
         )}
       </main>
-
-      {/* Mobile Header (for small screens) */}
-      <div className="md:hidden fixed top-0 left-0 right-0 glass-header px-4 py-3 flex items-center justify-between z-50">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <MessageCircle className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-heading font-bold">24gameapi</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full">
-            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full text-destructive">
-            <LogOut className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }
