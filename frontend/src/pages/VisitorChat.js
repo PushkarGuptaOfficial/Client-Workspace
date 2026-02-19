@@ -11,6 +11,12 @@ import axios from 'axios';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const STORAGE_KEYS = {
+  VISITOR_ID: 'chat_visitor_id',
+  SESSION_ID: 'chat_session_id',
+  VISITOR_NAME: 'chat_visitor_name'
+};
+
 export default function VisitorChat() {
   const { sessionId: urlSessionId } = useParams();
   const { theme, toggleTheme } = useTheme();
@@ -26,6 +32,7 @@ export default function VisitorChat() {
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null);
+  const [isRestoring, setIsRestoring] = useState(true);
   
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -38,6 +45,65 @@ export default function VisitorChat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Restore session on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      const storedVisitorId = localStorage.getItem(STORAGE_KEYS.VISITOR_ID);
+      const storedSessionId = urlSessionId || localStorage.getItem(STORAGE_KEYS.SESSION_ID);
+      const storedName = localStorage.getItem(STORAGE_KEYS.VISITOR_NAME);
+
+      if (storedVisitorId && storedSessionId) {
+        try {
+          // Verify session exists and is not closed
+          const sessionRes = await axios.get(`${API}/sessions/${storedSessionId}`);
+          const session = sessionRes.data;
+          
+          if (session && session.status !== 'closed') {
+            setVisitorId(storedVisitorId);
+            setSessionId(storedSessionId);
+            setVisitorName(storedName || 'Visitor');
+            setShowNameInput(false);
+
+            // Load messages
+            const messagesRes = await axios.get(`${API}/sessions/${storedSessionId}/messages`);
+            setMessages(messagesRes.data);
+
+            // Check if agent is assigned
+            if (session.assigned_agent_id) {
+              const agentsRes = await axios.get(`${API}/agents`);
+              const agent = agentsRes.data.find(a => a.id === session.assigned_agent_id);
+              if (agent) setAgentName(agent.name);
+            }
+
+            // Connect WebSocket
+            connectWebSocket(storedSessionId, storedVisitorId);
+          } else {
+            // Session closed, clear storage
+            clearStoredSession();
+          }
+        } catch (error) {
+          console.error('Error restoring session:', error);
+          clearStoredSession();
+        }
+      }
+      setIsRestoring(false);
+    };
+
+    restoreSession();
+  }, [urlSessionId]);
+
+  const clearStoredSession = () => {
+    localStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
+    localStorage.removeItem(STORAGE_KEYS.SESSION_ID);
+    localStorage.removeItem(STORAGE_KEYS.VISITOR_NAME);
+  };
+
+  const saveSession = (vId, sId, name) => {
+    localStorage.setItem(STORAGE_KEYS.VISITOR_ID, vId);
+    localStorage.setItem(STORAGE_KEYS.SESSION_ID, sId);
+    localStorage.setItem(STORAGE_KEYS.VISITOR_NAME, name);
+  };
 
   // Initialize visitor and session
   const startChat = async () => {
@@ -61,7 +127,10 @@ export default function VisitorChat() {
       setSessionId(session.id);
       setShowNameInput(false);
 
-      // Load existing messages
+      // Save to localStorage
+      saveSession(visitor.id, session.id, visitorName);
+
+      // Load existing messages (in case session already had messages)
       const messagesRes = await axios.get(`${API}/sessions/${session.id}/messages`);
       setMessages(messagesRes.data);
 
@@ -99,6 +168,7 @@ export default function VisitorChat() {
       } else if (data.type === 'session_closed') {
         toast.info('Chat session has been closed');
         setIsConnected(false);
+        clearStoredSession();
       }
     };
 
@@ -234,8 +304,15 @@ export default function VisitorChat() {
 
   return (
     <div className="visitor-chat bg-background" data-testid="visitor-chat">
-      {/* Header */}
-      <header className="glass-header sticky top-0 z-10 px-4 py-3 flex items-center justify-between">
+      {/* Loading State */}
+      {isRestoring ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <>
+          {/* Header */}
+          <header className="glass-header sticky top-0 z-10 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
             <MessageCircle className="w-5 h-5 text-primary-foreground" />
