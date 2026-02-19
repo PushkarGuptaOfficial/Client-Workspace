@@ -536,10 +536,11 @@ async def visitor_websocket(websocket: WebSocket, session_id: str):
                             "session_id": session_id
                         })
                     
-                    # Broadcast to all agents for notification
+                    # Broadcast to all agents for notification (new message event)
                     await manager.broadcast_to_agents({
-                        "type": "session_updated",
-                        "session": {**session, "last_message": data.get("content", "")[:100]}
+                        "type": "new_message",
+                        "message": doc,
+                        "session_id": session_id
                     })
             
             elif data.get("type") == "typing":
