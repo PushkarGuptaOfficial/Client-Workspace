@@ -1,54 +1,67 @@
-// Audio notification utilities using Web Audio API
-let audioContext = null;
+// Audio notification utilities
 
-const getAudioContext = () => {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  return audioContext;
+// Simple beep sounds as base64 data URIs (tiny WAV files)
+const SOUNDS = {
+  // Short high-pitched beep for agent messages (heard by visitor)
+  agent: 'data:audio/wav;base64,UklGRl4AAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YToAAAAwgDCAAIAAAACAAIAAAIAAAACAAAAAAQAA/v8AAAEAAAAAAP//AAD//wAAAAABAAAAAAD//wAA',
+  // Lower beep for visitor messages (heard by agent)  
+  visitor: 'data:audio/wav;base64,UklGRmQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAACABAAZGF0YUAAAABggGCAAIAAAACAAIAAAIAAAACAAAAAAYAA/n8AAAIAAAAAAP7/AAD+/wAAAAACAAAAAQD+/wAA'
 };
 
-// Play a notification tone
-export const playNotificationSound = (type = 'message') => {
-  try {
-    const ctx = getAudioContext();
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    
-    if (type === 'agent') {
-      // Higher pitched, friendly tone for agent messages (visitor side)
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5
-      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1); // C#6
-      gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
-      oscillator.start(ctx.currentTime);
-      oscillator.stop(ctx.currentTime + 0.25);
-    } else {
-      // Lower pitched, attention tone for visitor messages (agent side)
-      oscillator.frequency.setValueAtTime(523, ctx.currentTime); // C5
-      oscillator.frequency.setValueAtTime(659, ctx.currentTime + 0.08); // E5
-      oscillator.frequency.setValueAtTime(784, ctx.currentTime + 0.16); // G5
-      gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-      oscillator.start(ctx.currentTime);
-      oscillator.stop(ctx.currentTime + 0.3);
-    }
-  } catch (e) {
-    console.log('Audio notification not available:', e);
-  }
-};
+let lastPlayTime = 0;
+const DEBOUNCE_MS = 800;
 
-// Debounce to prevent excessive sounds
-let lastSoundTime = 0;
-const SOUND_DEBOUNCE_MS = 500;
-
-export const playNotificationDebounced = (type = 'message') => {
+export const playNotificationSound = (type = 'visitor') => {
   const now = Date.now();
-  if (now - lastSoundTime > SOUND_DEBOUNCE_MS) {
-    lastSoundTime = now;
-    playNotificationSound(type);
+  if (now - lastPlayTime < DEBOUNCE_MS) return;
+  
+  try {
+    const audio = new Audio(SOUNDS[type] || SOUNDS.visitor);
+    audio.volume = 0.5;
+    audio.play().catch(() => {
+      // Autoplay blocked - ignore silently
+    });
+    lastPlayTime = now;
+  } catch (e) {
+    // Audio not supported
   }
+};
+
+// Alternative using Web Audio API for browsers that block Audio elements
+export const playBeep = (frequency = 520, duration = 150, type = 'visitor') => {
+  const now = Date.now();
+  if (now - lastPlayTime < DEBOUNCE_MS) return;
+  
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    
+    const ctx = new AudioContext();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    
+    oscillator.frequency.value = type === 'agent' ? 880 : 520;
+    oscillator.type = 'sine';
+    
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration / 1000);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + duration / 1000);
+    
+    lastPlayTime = now;
+    
+    // Clean up
+    setTimeout(() => ctx.close(), duration + 100);
+  } catch (e) {
+    // Web Audio not supported
+  }
+};
+
+// Combined function that tries both methods
+export const playNotification = (type = 'visitor') => {
+  playNotificationSound(type);
 };
