@@ -8,7 +8,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { playNotificationDebounced } from '../utils/audio';
+import { playNotification } from '../utils/audio';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -165,7 +165,7 @@ export default function VisitorChat() {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
           });
-          playNotificationDebounced('agent');
+          playNotification('agent');
         }
         setIsTyping(false);
       } else if (data.type === 'agent_joined') {

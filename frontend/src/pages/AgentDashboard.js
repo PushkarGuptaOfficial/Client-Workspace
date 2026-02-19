@@ -12,7 +12,7 @@ import { Badge } from '../components/ui/badge';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { playNotificationDebounced } from '../utils/audio';
+import { playNotification } from '../utils/audio';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -124,7 +124,7 @@ export default function AgentDashboard() {
 
         // Play sound and show notification for visitor messages
         if (data.message.sender_type === 'visitor') {
-          playNotificationDebounced('visitor');
+          playNotification('visitor');
           if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('New Message', { body: data.message.content });
           }
@@ -132,7 +132,7 @@ export default function AgentDashboard() {
       } else if (data.type === 'new_session') {
         setSessions(prev => [data.session, ...prev]);
         toast.info(`New chat from ${data.session.visitor_name || 'Visitor'}`);
-        playNotificationDebounced('visitor');
+        playNotification('visitor');
       } else if (data.type === 'session_updated' || data.type === 'session_closed') {
         setSessions(prev => prev.map(s => s.id === data.session.id ? data.session : s));
       } else if (data.type === 'visitor_typing' && data.session_id === currentSession?.id) {
