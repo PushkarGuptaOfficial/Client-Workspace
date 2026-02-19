@@ -613,13 +613,19 @@ async def agent_websocket(websocket: WebSocket, agent_id: str):
     except WebSocketDisconnect:
         await manager.disconnect_agent(agent_id)
 
-# ==================== STATIC FILES ====================
+# ==================== ROOT ENDPOINT ====================
 
-# Mount uploads directory
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+@api_router.get("/")
+async def root():
+    return {"message": "24gameapi Chat API"}
 
-# Include the router in the main app
+# ==================== STATIC FILES & CONFIG ====================
+
+# Include the router in the main app FIRST
 app.include_router(api_router)
+
+# Mount uploads directory AFTER router (so it doesn't catch all /api routes)
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
@@ -628,10 +634,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@api_router.get("/")
-async def root():
-    return {"message": "24gameapi Chat API"}
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
