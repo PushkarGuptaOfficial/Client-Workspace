@@ -144,10 +144,12 @@ code {
 /* Chat bubbles */
 .chat-bubble-visitor {
     @apply bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] shadow-sm;
+    margin-bottom: 2px;
 }
 
 .chat-bubble-agent {
     @apply bg-muted text-foreground rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%];
+    margin-bottom: 2px;
 }
 
 /* Glass effect */

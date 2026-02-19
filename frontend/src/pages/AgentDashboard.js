@@ -591,11 +591,11 @@ export default function AgentDashboard() {
 
             {/* Messages Area */}
             <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4 max-w-3xl mx-auto">
+              <div className="messages-container max-w-3xl mx-auto py-2">
                 {messages.map((msg, idx) => (
                   <div
                     key={msg.id || idx}
-                    className={`flex ${msg.sender_type === 'agent' ? 'justify-end' : 'justify-start'} message-enter`}
+                    className={`message-row ${msg.sender_type === 'agent' ? 'justify-end' : 'justify-start'} message-enter`}
                   >
                     {msg.sender_type === 'visitor' && (
                       <Avatar className="w-8 h-8 mr-2 mt-1 shrink-0">
@@ -654,7 +654,7 @@ export default function AgentDashboard() {
                 ))}
                 
                 {visitorTyping && (
-                  <div className="flex justify-start">
+                  <div className="message-row justify-start">
                     <Avatar className="w-8 h-8 mr-2 mt-1 shrink-0">
                       <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                         {selectedSession.visitor_name?.[0] || 'V'}

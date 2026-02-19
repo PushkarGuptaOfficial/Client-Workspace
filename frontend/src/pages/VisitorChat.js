@@ -299,7 +299,7 @@ export default function VisitorChat() {
         <>
           {/* Messages Area */}
           <ScrollArea className="flex-1 p-4" data-testid="messages-area">
-            <div className="space-y-4 max-w-2xl mx-auto">
+            <div className="messages-container max-w-2xl mx-auto py-2">
               {messages.length === 0 && (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">
@@ -311,7 +311,7 @@ export default function VisitorChat() {
               {messages.map((msg, idx) => (
                 <div
                   key={msg.id || idx}
-                  className={`flex ${msg.sender_type === 'visitor' ? 'justify-end' : 'justify-start'} message-enter`}
+                  className={`message-row ${msg.sender_type === 'visitor' ? 'justify-end' : 'justify-start'} message-enter`}
                   style={{ animationDelay: `${idx * 0.05}s` }}
                 >
                   {msg.sender_type === 'agent' && (
@@ -361,7 +361,7 @@ export default function VisitorChat() {
               ))}
               
               {isTyping && (
-                <div className="flex justify-start">
+                <div className="message-row justify-start">
                   <div className="chat-bubble-agent">
                     <div className="typing-indicator">
                       <span></span>

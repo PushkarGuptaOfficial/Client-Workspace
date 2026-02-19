@@ -47,6 +47,22 @@
     }
 }
 
+/* Message container spacing */
+.messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.message-row {
+    display: flex;
+    padding: 0.25rem 0;
+}
+
+.message-row + .message-row {
+    margin-top: 0.5rem;
+}
+
 /* Typing indicator */
 .typing-indicator {
     display: flex;
