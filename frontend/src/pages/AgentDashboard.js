@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageCircle, Send, Paperclip, Moon, Sun, LogOut, Users, Clock,
-  CheckCircle, XCircle, Bell, BellOff, User, Loader2, Search, MoreVertical
+  CheckCircle, XCircle, Bell, BellOff, User, Loader2, Search, MoreVertical, X
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
