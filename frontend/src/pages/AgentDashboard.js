@@ -12,6 +12,7 @@ import { Badge } from '../components/ui/badge';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { playNotificationDebounced } from '../utils/audio';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -35,6 +36,12 @@ export default function AgentDashboard() {
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const selectedSessionRef = useRef(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    selectedSessionRef.current = selectedSession;
+  }, [selectedSession]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -82,7 +89,7 @@ export default function AgentDashboard() {
     return () => clearInterval(interval);
   }, [agent]);
 
-  // WebSocket connection
+  // WebSocket connection - only reconnect when agent changes, not session
   useEffect(() => {
     if (!agent) return;
 
@@ -95,28 +102,40 @@ export default function AgentDashboard() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      const currentSession = selectedSessionRef.current;
       
       if (data.type === 'new_message') {
-        if (data.session_id === selectedSession?.id) {
-          setMessages(prev => [...prev, data.message]);
+        // Only add to messages if it's for current session AND from visitor
+        if (data.session_id === currentSession?.id && data.message.sender_type === 'visitor') {
+          setMessages(prev => {
+            // Avoid duplicates
+            if (prev.some(m => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
           setVisitorTyping(false);
         }
         
+        // Update session list
         setSessions(prev => prev.map(s => 
           s.id === data.session_id 
-            ? { ...s, last_message: data.message.content?.substring(0, 100), updated_at: new Date().toISOString(), unread_count: (s.unread_count || 0) + 1 }
+            ? { ...s, last_message: data.message.content?.substring(0, 100), updated_at: new Date().toISOString(), unread_count: (s.unread_count || 0) + (data.message.sender_type === 'visitor' ? 1 : 0) }
             : s
         ));
 
-        if (data.message.sender_type === 'visitor' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('New Message', { body: data.message.content });
+        // Play sound and show notification for visitor messages
+        if (data.message.sender_type === 'visitor') {
+          playNotificationDebounced('visitor');
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('New Message', { body: data.message.content });
+          }
         }
       } else if (data.type === 'new_session') {
         setSessions(prev => [data.session, ...prev]);
         toast.info(`New chat from ${data.session.visitor_name || 'Visitor'}`);
+        playNotificationDebounced('visitor');
       } else if (data.type === 'session_updated' || data.type === 'session_closed') {
         setSessions(prev => prev.map(s => s.id === data.session.id ? data.session : s));
-      } else if (data.type === 'visitor_typing' && data.session_id === selectedSession?.id) {
+      } else if (data.type === 'visitor_typing' && data.session_id === currentSession?.id) {
         setVisitorTyping(true);
         setTimeout(() => setVisitorTyping(false), 3000);
       }
@@ -126,7 +145,7 @@ export default function AgentDashboard() {
     wsRef.current = ws;
 
     return () => ws.close();
-  }, [agent, selectedSession?.id]);
+  }, [agent]);
 
   // Load messages when session selected
   useEffect(() => {
