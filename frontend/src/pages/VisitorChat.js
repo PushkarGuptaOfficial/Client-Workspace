@@ -8,7 +8,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { playNotification } from '../utils/audio';
+import { playNotification, ensureAudioUnlocked } from '../utils/audio';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -112,6 +112,9 @@ export default function VisitorChat() {
       toast.error('Please enter your name');
       return;
     }
+
+    // Unlock audio on user action
+    ensureAudioUnlocked();
 
     try {
       // Create visitor
