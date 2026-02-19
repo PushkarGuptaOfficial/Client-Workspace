@@ -8,6 +8,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { playNotificationDebounced } from '../utils/audio';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -157,7 +158,15 @@ export default function VisitorChat() {
       const data = JSON.parse(event.data);
       
       if (data.type === 'new_message') {
-        setMessages(prev => [...prev, data.message]);
+        // Only add if it's from agent (visitor messages are added optimistically)
+        if (data.message.sender_type === 'agent') {
+          setMessages(prev => {
+            // Avoid duplicates
+            if (prev.some(m => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
+          playNotificationDebounced('agent');
+        }
         setIsTyping(false);
       } else if (data.type === 'agent_joined') {
         setAgentName(data.agent_name);
