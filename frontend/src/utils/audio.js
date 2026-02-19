@@ -1,67 +1,105 @@
-// Audio notification utilities
+// Audio notification utilities with autoplay unlock
 
-// Simple beep sounds as base64 data URIs (tiny WAV files)
-const SOUNDS = {
-  // Short high-pitched beep for agent messages (heard by visitor)
-  agent: 'data:audio/wav;base64,UklGRl4AAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YToAAAAwgDCAAIAAAACAAIAAAIAAAACAAAAAAQAA/v8AAAEAAAAAAP//AAD//wAAAAABAAAAAAD//wAA',
-  // Lower beep for visitor messages (heard by agent)  
-  visitor: 'data:audio/wav;base64,UklGRmQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAACABAAZGF0YUAAAABggGCAAIAAAACAAIAAAIAAAACAAAAAAYAA/n8AAAIAAAAAAP7/AAD+/wAAAAACAAAAAQD+/wAA'
-};
-
+let audioContext = null;
+let isUnlocked = false;
 let lastPlayTime = 0;
-const DEBOUNCE_MS = 800;
+const DEBOUNCE_MS = 600;
 
-export const playNotificationSound = (type = 'visitor') => {
-  const now = Date.now();
-  if (now - lastPlayTime < DEBOUNCE_MS) return;
+// Initialize audio context on user interaction
+const initAudioContext = () => {
+  if (audioContext) return audioContext;
   
   try {
-    const audio = new Audio(SOUNDS[type] || SOUNDS.visitor);
-    audio.volume = 0.5;
-    audio.play().catch(() => {
-      // Autoplay blocked - ignore silently
-    });
-    lastPlayTime = now;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioCtx();
   } catch (e) {
-    // Audio not supported
+    console.warn('Web Audio not supported');
   }
+  return audioContext;
 };
 
-// Alternative using Web Audio API for browsers that block Audio elements
-export const playBeep = (frequency = 520, duration = 150, type = 'visitor') => {
+// Unlock audio on first user interaction
+const unlockAudio = async () => {
+  if (isUnlocked) return;
+  
+  const ctx = initAudioContext();
+  if (!ctx) return;
+  
+  // Resume if suspended
+  if (ctx.state === 'suspended') {
+    await ctx.resume();
+  }
+  
+  // Play silent buffer to unlock
+  const buffer = ctx.createBuffer(1, 1, 22050);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(0);
+  
+  isUnlocked = true;
+  console.log('Audio unlocked');
+};
+
+// Attach unlock to common user interactions
+if (typeof window !== 'undefined') {
+  const events = ['click', 'touchstart', 'keydown'];
+  const unlockHandler = () => {
+    unlockAudio();
+    events.forEach(e => document.removeEventListener(e, unlockHandler));
+  };
+  events.forEach(e => document.addEventListener(e, unlockHandler, { once: false, passive: true }));
+}
+
+// Play notification beep using Web Audio API
+export const playNotification = async (type = 'visitor') => {
   const now = Date.now();
   if (now - lastPlayTime < DEBOUNCE_MS) return;
+  lastPlayTime = now;
+  
+  const ctx = initAudioContext();
+  if (!ctx) return;
+  
+  // Ensure context is running
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch (e) {
+      return;
+    }
+  }
   
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    
-    const ctx = new AudioContext();
     const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const gainNode = ctx.createGain();
     
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
     
-    oscillator.frequency.value = type === 'agent' ? 880 : 520;
-    oscillator.type = 'sine';
+    const now = ctx.currentTime;
     
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration / 1000);
-    
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + duration / 1000);
-    
-    lastPlayTime = now;
-    
-    // Clean up
-    setTimeout(() => ctx.close(), duration + 100);
+    if (type === 'agent') {
+      // Higher tone for agent reply (visitor hears this)
+      oscillator.frequency.setValueAtTime(830, now);
+      oscillator.frequency.setValueAtTime(1050, now + 0.08);
+      gainNode.gain.setValueAtTime(0.25, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      oscillator.start(now);
+      oscillator.stop(now + 0.2);
+    } else {
+      // Lower tone for visitor message (agent hears this)
+      oscillator.frequency.setValueAtTime(440, now);
+      oscillator.frequency.setValueAtTime(550, now + 0.1);
+      oscillator.frequency.setValueAtTime(660, now + 0.2);
+      gainNode.gain.setValueAtTime(0.25, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      oscillator.start(now);
+      oscillator.stop(now + 0.35);
+    }
   } catch (e) {
-    // Web Audio not supported
+    console.warn('Audio playback failed:', e);
   }
 };
 
-// Combined function that tries both methods
-export const playNotification = (type = 'visitor') => {
-  playNotificationSound(type);
-};
+// Export unlock function for manual triggering if needed
+export const ensureAudioUnlocked = unlockAudio;
