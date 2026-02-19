@@ -516,6 +516,9 @@ async def visitor_websocket(websocket: WebSocket, session_id: str):
                 doc = message.model_dump()
                 await db.messages.insert_one(doc)
                 
+                # Remove _id for JSON serialization
+                doc.pop('_id', None)
+                
                 # Update session
                 session = await db.chat_sessions.find_one({"id": session_id}, {"_id": 0})
                 if session:
@@ -581,6 +584,9 @@ async def agent_websocket(websocket: WebSocket, agent_id: str):
                 
                 doc = message.model_dump()
                 await db.messages.insert_one(doc)
+                
+                # Remove _id for JSON serialization
+                doc.pop('_id', None)
                 
                 # Update session
                 await db.chat_sessions.update_one(
