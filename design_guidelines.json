@@ -1,0 +1,175 @@
+{
+  "identity": {
+    "persona": "E1",
+    "mission": "Create a minimal, high-performance chat workspace that blends gaming aesthetics with Swiss design precision.",
+    "principles": [
+      "Fusion over Imitation: Gaming HUD meets Swiss Cleanliness.",
+      "Emotion First: Trust and Speed for visitors; Focus and Calm for agents.",
+      "Content is King: The conversation is the hero.",
+      "Zoom In: Focus on the message content.",
+      "Negative Space: generous padding to reduce cognitive load."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "weights": {
+      "light": 300,
+      "regular": 400,
+      "medium": 500,
+      "bold": 700,
+      "black": 900
+    },
+    "imports": [
+      "@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;900&family=Manrope:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');"
+    ]
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#7C3AED",
+        "foreground": "#FFFFFF",
+        "50": "#F5F3FF",
+        "100": "#EDE9FE",
+        "200": "#DDD6FE",
+        "300": "#C4B5FD",
+        "400": "#A78BFA",
+        "500": "#8B5CF6",
+        "600": "#7C3AED",
+        "700": "#6D28D9",
+        "800": "#5B21B6",
+        "900": "#4C1D95"
+      },
+      "secondary": {
+        "DEFAULT": "#14B8A6",
+        "foreground": "#FFFFFF"
+      },
+      "neutral": {
+        "50": "#F8FAFC",
+        "100": "#F1F5F9",
+        "200": "#E2E8F0",
+        "300": "#CBD5E1",
+        "400": "#94A3B8",
+        "500": "#64748B",
+        "600": "#475569",
+        "700": "#334155",
+        "800": "#1E293B",
+        "900": "#0F172A",
+        "950": "#020617"
+      },
+      "background": {
+        "light": "#FFFFFF",
+        "dark": "#0F172A"
+      },
+      "surface": {
+        "light": "#F8FAFC",
+        "dark": "#1E293B"
+      }
+    },
+    "semantic": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "info": "#3B82F6"
+    }
+  },
+  "layout": {
+    "spacing": {
+      "container_padding": "p-4 md:p-8 lg:p-12",
+      "section_gap": "gap-8 md:gap-12",
+      "component_gap": "gap-4"
+    },
+    "grid": {
+      "dashboard": "grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[280px_1fr_320px] h-screen overflow-hidden",
+      "mobile_chat": "flex flex-col h-[100dvh]"
+    },
+    "radius": {
+      "default": "rounded-xl",
+      "large": "rounded-2xl",
+      "chat_bubble": "rounded-2xl rounded-tr-sm"
+    }
+  },
+  "components": {
+    "buttons": {
+      "base": "inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      "ghost": "hover:bg-accent hover:text-accent-foreground",
+      "outline": "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+    },
+    "inputs": {
+      "base": "flex h-12 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "cards": {
+      "base": "rounded-2xl border bg-card text-card-foreground shadow-sm"
+    },
+    "chat_bubbles": {
+      "user": "bg-primary text-primary-foreground rounded-2xl rounded-tr-sm p-4 max-w-[85%] shadow-sm",
+      "agent": "bg-muted text-foreground rounded-2xl rounded-tl-sm p-4 max-w-[85%]"
+    }
+  },
+  "assets": {
+    "logos": [
+      {
+        "url": "https://images.unsplash.com/photo-1652156752342-c786f1e1d1ce?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHw0fHx0ZWNoJTIwY29tcGFueSUyMGxvZ28lMjBtaW5pbWFsfGVufDB8fHx8MTc3MTQ5OTEyM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "3D Cube Logo (Placeholder for 24gameapi)",
+        "category": "brand"
+      }
+    ],
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1615843423179-bea071facf96?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjB1c2VyJTIwYXZhdGFyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzcxNDk5MTI0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional Male Avatar (Mask)",
+        "category": "user"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1650913406617-bd9b0ab07d07?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjB1c2VyJTIwYXZhdGFyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzcxNDk5MTI0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Casual Male Avatar",
+        "category": "user"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1771050889377-b68415885c64?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjB1c2VyJTIwYXZhdGFyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzcxNDk5MTI0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Bearded Man Avatar",
+        "category": "user"
+      }
+    ],
+    "backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1763562898665-dc13a919dc93?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlcyUyMGxpZ2h0JTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzE0OTkxMjV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract Geometric Dark/Blue",
+        "category": "hero_bg"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1759956445479-ab537a9b2f12?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlcyUyMGxpZ2h0JTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzE0OTkxMjV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Light Streaks Abstract",
+        "category": "hero_bg"
+      }
+    ]
+  },
+  "universal_guidelines": [
+    "Do not use 'Inter' for headings. Use 'Outfit'.",
+    "Do not use default blue. Use the defined Primary Violet.",
+    "Ensure all interactive elements have data-testid attributes.",
+    "Use 'sonner' for toasts.",
+    "Mobile-first: The visitor chat must feel like a native app (100dvh).",
+    "Agent Dashboard: Dense but breathable. Use borders and subtle backgrounds to separate areas, not just whitespace.",
+    "Glassmorphism: Use backdrop-blur-xl on sticky headers and chat input areas.",
+    "Animation: Use framer-motion for smooth message entry (slide up + fade in).",
+    "Theme: Support Light (Default) and Dark modes. Use 'dark:' classes."
+  ],
+  "instructions_to_main_agent": {
+    "setup": [
+      "Install fonts in index.css",
+      "Update tailwind.config.js with the color palette and font families",
+      "Ensure 'lucide-react' is used for icons"
+    ],
+    "pages": {
+      "visitor_chat": "Full screen, no scroll on body. Scrollable message area. Fixed bottom input. Header with agent status.",
+      "agent_login": "Clean, centered card on an abstract background.",
+      "agent_dashboard": "Sidebar layout. Left: Navigation. Middle: Chat List (scrollable). Right: Active Chat (flex-grow). Far Right (Optional): Customer Details."
+    }
+  }
+}
