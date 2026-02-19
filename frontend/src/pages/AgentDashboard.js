@@ -45,6 +45,8 @@ export default function AgentDashboard() {
   const [uploading, setUploading] = useState(false);
   const [agents, setAgents] = useState([]);
   const [visitorTyping, setVisitorTyping] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingPreview, setPendingPreview] = useState(null);
   
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -193,77 +195,107 @@ export default function AgentDashboard() {
     fetchMessages();
   }, [selectedSession?.id]);
 
-  const sendMessage = (e) => {
+  const sendMessage = async (e) => {
     e?.preventDefault();
-    if (!newMessage.trim() || !wsRef.current || !isConnected || !selectedSession) return;
+    if ((!newMessage.trim() && !pendingFile) || !wsRef.current || !isConnected || !selectedSession) return;
 
-    const messageData = {
-      type: 'message',
-      session_id: selectedSession.id,
-      content: newMessage.trim(),
-      message_type: 'text'
-    };
+    // If there's a pending file, upload it first
+    if (pendingFile) {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('file', pendingFile);
 
-    wsRef.current.send(JSON.stringify(messageData));
-    
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      sender_type: 'agent',
-      sender_id: agent.id,
-      sender_name: agent.name,
-      content: newMessage.trim(),
-      message_type: 'text',
-      created_at: new Date().toISOString()
-    }]);
+      try {
+        const res = await axios.post(`${API}/upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
 
-    setNewMessage('');
-  };
+        const { file_url, file_name, file_type } = res.data;
+        const content = newMessage.trim() || (file_type === 'image' ? 'Shared an image' : `Shared file: ${file_name}`);
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedSession) return;
+        const messageData = {
+          type: 'message',
+          session_id: selectedSession.id,
+          content,
+          message_type: file_type,
+          file_url,
+          file_name
+        };
 
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
+        wsRef.current.send(JSON.stringify(messageData));
 
-    try {
-      const res = await axios.post(`${API}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          sender_type: 'agent',
+          sender_id: agent.id,
+          sender_name: agent.name,
+          content,
+          message_type: file_type,
+          file_url,
+          file_name,
+          created_at: new Date().toISOString()
+        }]);
 
-      const { file_url, file_name, file_type } = res.data;
-
+        clearPendingFile();
+        setNewMessage('');
+      } catch (error) {
+        toast.error('Failed to upload file');
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      // Text only message
       const messageData = {
         type: 'message',
         session_id: selectedSession.id,
-        content: file_type === 'image' ? 'Shared an image' : `Shared file: ${file_name}`,
-        message_type: file_type,
-        file_url,
-        file_name
+        content: newMessage.trim(),
+        message_type: 'text'
       };
 
       wsRef.current.send(JSON.stringify(messageData));
-
+      
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         sender_type: 'agent',
         sender_id: agent.id,
         sender_name: agent.name,
-        content: messageData.content,
-        message_type: file_type,
-        file_url,
-        file_name,
+        content: newMessage.trim(),
+        message_type: 'text',
         created_at: new Date().toISOString()
       }]);
 
-      toast.success('File sent!');
-    } catch (error) {
-      toast.error('Failed to upload file');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setNewMessage('');
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedSession) return;
+
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error('File too large. Maximum size is 10MB.');
+      return;
+    }
+
+    setPendingFile(file);
+    
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (imageExts.includes(ext)) {
+      const reader = new FileReader();
+      reader.onload = (e) => setPendingPreview(e.target.result);
+      reader.readAsDataURL(file);
+    } else {
+      setPendingPreview(null);
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const clearPendingFile = () => {
+    setPendingFile(null);
+    setPendingPreview(null);
   };
 
   const assignToMe = async (sessionId) => {
@@ -645,11 +677,37 @@ export default function AgentDashboard() {
             {/* Input Area */}
             {selectedSession.status !== 'closed' && selectedSession.assigned_agent_id === agent.id && (
               <div className="glass-input p-4 shrink-0">
+                {/* Pending File Preview */}
+                {pendingFile && (
+                  <div className="max-w-3xl mx-auto mb-2">
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded-xl">
+                      {pendingPreview ? (
+                        <img src={pendingPreview} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Paperclip className="w-5 h-5 text-primary" />
+                        </div>
+                      )}
+                      <span className="flex-1 text-sm truncate">{pendingFile.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={clearPendingFile}
+                        data-testid="agent-remove-file-btn"
+                        className="rounded-full h-8 w-8 shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
                 <form onSubmit={sendMessage} className="max-w-3xl mx-auto flex items-center gap-2">
                   <input
                     type="file"
                     ref={fileInputRef}
-                    onChange={handleFileUpload}
+                    onChange={handleFileSelect}
                     className="hidden"
                     accept="image/*,.pdf,.doc,.docx,.txt"
                   />
@@ -680,7 +738,7 @@ export default function AgentDashboard() {
                   
                   <Button
                     type="submit"
-                    disabled={!newMessage.trim()}
+                    disabled={(!newMessage.trim() && !pendingFile) || uploading}
                     data-testid="agent-send-message-btn"
                     className="rounded-full h-12 w-12 shrink-0"
                   >
