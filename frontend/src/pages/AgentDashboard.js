@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, MessageCircle } from 'lucide-react';
+import { Search, MessageCircle } from 'lucide-react';
 import { Input } from '../components/ui/input';
-import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import Sidebar from '../components/Sidebar';
 import MobileNav from '../components/MobileNav';
 import ChatCard from '../components/ChatCard';
 import ChatPanel from '../components/ChatPanel';
+import FilterTabs from '../components/FilterTabs';
 import ProjectsView from './views/ProjectsView';
 import OrdersView from './views/OrdersView';
 import AgentsView from './views/AgentsView';
@@ -15,6 +15,7 @@ import AnalyticsView from './views/AnalyticsView';
 import SettingsView from './views/SettingsView';
 import NotificationsView from './views/NotificationsView';
 import { playNotification, ensureAudioUnlocked } from '../utils/audio';
+import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
 import axios from 'axios';
 
@@ -22,6 +23,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function AgentDashboard() {
   const navigate = useNavigate();
+  const { isDark } = useTheme();
   
   // State
   const [agent, setAgent] = useState(null);
@@ -31,6 +33,7 @@ export default function AgentDashboard() {
   const [selectedSession, setSelectedSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [isConnected, setIsConnected] = useState(false);
   const [visitorTyping, setVisitorTyping] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
@@ -187,16 +190,40 @@ export default function AgentDashboard() {
     }]);
   };
 
-  const assignToMe = async (sessionId) => {
+  const assignAgent = async (sessionId, agentId) => {
     try {
-      await axios.put(`${API}/sessions/${sessionId}/assign`, { agent_id: agent.id });
-      toast.success('Chat assigned to you');
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, assigned_agent_id: agent.id, status: 'active' } : s));
+      await axios.put(`${API}/sessions/${sessionId}/assign`, { agent_id: agentId });
+      toast.success('Agent assigned');
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, assigned_agent_id: agentId, status: 'active' } : s));
       if (selectedSession?.id === sessionId) {
-        setSelectedSession(prev => ({ ...prev, assigned_agent_id: agent.id, status: 'active' }));
+        setSelectedSession(prev => ({ ...prev, assigned_agent_id: agentId, status: 'active' }));
       }
     } catch (error) {
-      toast.error('Failed to assign chat');
+      toast.error('Failed to assign agent');
+    }
+  };
+
+  const revokeAgent = async (sessionId) => {
+    try {
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, assigned_agent_id: null, status: 'waiting' } : s));
+      toast.success('Agent revoked');
+    } catch (error) {
+      toast.error('Failed to revoke agent');
+    }
+  };
+
+  const deleteSession = async (sessionId) => {
+    try {
+      await axios.put(`${API}/sessions/${sessionId}/close`);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (selectedSession?.id === sessionId) {
+        setSelectedSession(null);
+        setMessages([]);
+        setMobileShowChat(false);
+      }
+      toast.success('Conversation deleted');
+    } catch (error) {
+      toast.error('Failed to delete conversation');
     }
   };
 
@@ -222,15 +249,41 @@ export default function AgentDashboard() {
     toast.success('Marked as order');
   };
 
+  // Update session status - sync with Orders if order_placed
   const updateSessionStatus = (sessionId, status) => {
-    setSessions(prev => prev.map(s => 
-      s.id === sessionId ? { ...s, order_status: status } : s
-    ));
+    setSessions(prev => prev.map(s => {
+      if (s.id === sessionId) {
+        const isOrder = status === 'order_placed' || s.is_order;
+        return { ...s, order_status: status, is_order: isOrder };
+      }
+      return s;
+    }));
   };
 
-  const filteredSessions = sessions
-    .filter(s => !searchQuery || s.visitor_name?.toLowerCase().includes(searchQuery.toLowerCase()))
-    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  // Filter sessions based on active filter
+  const getFilteredSessions = () => {
+    let filtered = sessions;
+    
+    // Apply search
+    if (searchQuery) {
+      filtered = filtered.filter(s => 
+        s.visitor_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply status filter
+    if (activeFilter !== 'all') {
+      filtered = filtered.filter(s => {
+        const status = s.order_status || s.status || 'new_lead';
+        return status === activeFilter;
+      });
+    }
+    
+    // Sort by updated_at
+    return filtered.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  };
+
+  const filteredSessions = getFilteredSessions();
 
   if (!agent) return null;
 
@@ -238,7 +291,7 @@ export default function AgentDashboard() {
   const renderContent = () => {
     switch (activeView) {
       case 'projects':
-        return <ProjectsView />;
+        return <ProjectsView isDark={isDark} />;
       case 'orders':
         return (
           <OrdersView 
@@ -247,25 +300,30 @@ export default function AgentDashboard() {
             onSelect={selectSession}
             selectedId={selectedSession?.id}
             onStatusChange={updateSessionStatus}
+            isDark={isDark}
           />
         );
       case 'agents':
-        return <AgentsView agents={agents} sessions={sessions} />;
+        return <AgentsView agents={agents} sessions={sessions} isDark={isDark} />;
       case 'analytics':
-        return <AnalyticsView sessions={sessions} agents={agents} />;
+        return <AnalyticsView sessions={sessions} agents={agents} isDark={isDark} />;
       case 'general':
         return <SettingsView />;
       case 'notifications':
-        return <NotificationsView />;
+        return <NotificationsView isDark={isDark} />;
       default:
         return null;
     }
   };
 
-  const showChatList = activeView === 'chats' || activeView === 'orders';
+  const bgColor = isDark ? 'bg-[#111111]' : 'bg-white';
+  const textColor = isDark ? 'text-white' : 'text-[#111111]';
+  const borderColor = isDark ? 'border-[#333]' : 'border-gray-100';
+  const mutedText = isDark ? 'text-gray-400' : 'text-gray-500';
+  const inputBg = isDark ? 'bg-[#2a2a2a] border-[#333]' : 'bg-gray-50 border-gray-200';
 
   return (
-    <div className="h-screen flex bg-white" data-testid="agent-dashboard">
+    <div className={`h-screen flex ${bgColor}`} data-testid="agent-dashboard">
       {/* Sidebar */}
       <Sidebar
         activeView={activeView}
@@ -274,32 +332,40 @@ export default function AgentDashboard() {
         onToggle={() => setSidebarFolded(!sidebarFolded)}
         onLogout={handleLogout}
         agent={agent}
+        isDark={isDark}
       />
 
       {/* Main Content */}
       {activeView === 'chats' ? (
         <>
           {/* Chat List */}
-          <div className={`w-full md:w-80 lg:w-96 border-r border-gray-100 flex flex-col bg-white ${mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
-            <div className="p-4 border-b border-gray-100">
+          <div className={`w-full md:w-80 lg:w-96 border-r ${borderColor} flex flex-col ${bgColor} ${mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
+            <div className={`p-4 border-b ${borderColor}`}>
               <div className="flex items-center justify-between mb-3">
-                <h1 className="text-lg font-semibold text-[#111111]">All Chats</h1>
-                <span className="text-xs text-gray-400">{filteredSessions.length} conversations</span>
+                <h1 className={`text-lg font-semibold ${textColor}`}>All Chats</h1>
+                <span className={`text-xs ${mutedText}`}>{filteredSessions.length} conversations</span>
               </div>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${mutedText}`} />
                 <Input
                   placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9 rounded-full bg-gray-50 border-gray-200"
+                  className={`pl-9 h-9 rounded-full ${inputBg}`}
                 />
               </div>
+              
+              {/* Filter Tabs */}
+              <FilterTabs 
+                activeFilter={activeFilter} 
+                onFilterChange={setActiveFilter}
+                isDark={isDark}
+              />
             </div>
 
             <ScrollArea className="flex-1">
               {filteredSessions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                <div className={`flex flex-col items-center justify-center py-16 ${mutedText}`}>
                   <MessageCircle className="w-12 h-12 mb-3 opacity-30" />
                   <p className="text-sm">No conversations</p>
                 </div>
@@ -314,6 +380,10 @@ export default function AgentDashboard() {
                       agents={agents}
                       showStatus={true}
                       onStatusChange={updateSessionStatus}
+                      onAssignAgent={assignAgent}
+                      onRevokeAgent={revokeAgent}
+                      onDelete={deleteSession}
+                      isDark={isDark}
                     />
                   ))}
                 </div>
@@ -329,15 +399,16 @@ export default function AgentDashboard() {
               agent={agent}
               onBack={() => setMobileShowChat(false)}
               onSendMessage={sendMessage}
-              onAssign={assignToMe}
+              onAssign={(id) => assignAgent(id, agent.id)}
               onMarkOrder={markAsOrder}
               onClose={closeSession}
               visitorTyping={visitorTyping}
+              isDark={isDark}
             />
           </div>
         </>
       ) : (
-        <div className="flex-1 overflow-auto">
+        <div className={`flex-1 overflow-auto ${bgColor}`}>
           {renderContent()}
         </div>
       )}
