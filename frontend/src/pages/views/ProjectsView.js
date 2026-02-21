@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { FolderOpen, Plus, File, Image, Link, FileText, Trash2, Send } from 'lucide-react';
+import { FolderOpen, Plus, File, Image, Link, FileText } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { ScrollArea } from '../../components/ui/scroll-area';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +10,7 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog';
 
-export default function ProjectsView() {
+export default function ProjectsView({ isDark = false }) {
   const [projects, setProjects] = useState([
     { id: '1', name: 'Marketing Campaign', items: [
       { id: 'i1', type: 'file', name: 'Proposal.pdf', url: '#' },
@@ -23,7 +22,12 @@ export default function ProjectsView() {
     ]},
   ]);
   const [newProjectName, setNewProjectName] = useState('');
-  const [selectedProject, setSelectedProject] = useState(null);
+
+  const bgColor = isDark ? 'bg-[#111111]' : 'bg-white';
+  const textColor = isDark ? 'text-white' : 'text-[#111111]';
+  const mutedText = isDark ? 'text-gray-400' : 'text-gray-500';
+  const cardBg = isDark ? 'bg-[#1a1a1a] border-[#333] hover:border-[#444]' : 'bg-white border-gray-200 hover:border-gray-300';
+  const iconBg = isDark ? 'bg-[#2a2a2a]' : 'bg-gray-100';
 
   const addProject = () => {
     if (!newProjectName.trim()) return;
@@ -36,25 +40,26 @@ export default function ProjectsView() {
   };
 
   const getIcon = (type) => {
+    const iconColor = isDark ? 'text-gray-400' : '';
     switch (type) {
-      case 'image': return <Image className="w-4 h-4 text-blue-500" />;
-      case 'link': return <Link className="w-4 h-4 text-green-500" />;
-      case 'doc': return <FileText className="w-4 h-4 text-orange-500" />;
-      default: return <File className="w-4 h-4 text-gray-500" />;
+      case 'image': return <Image className={`w-4 h-4 text-blue-500`} />;
+      case 'link': return <Link className={`w-4 h-4 text-green-500`} />;
+      case 'doc': return <FileText className={`w-4 h-4 text-orange-500`} />;
+      default: return <File className={`w-4 h-4 ${iconColor || 'text-gray-500'}`} />;
     }
   };
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className={`h-full flex flex-col p-6 ${bgColor}`}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#111111]">Projects</h1>
-          <p className="text-sm text-gray-500 mt-1">Organize files, links, and resources</p>
+          <h1 className={`text-2xl font-semibold ${textColor}`}>Projects</h1>
+          <p className={`text-sm ${mutedText} mt-1`}>Organize files, links, and resources</p>
         </div>
         
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-[#111111] hover:bg-[#333] text-white rounded-full">
+            <Button className={`rounded-full ${isDark ? 'bg-white text-[#111] hover:bg-gray-100' : 'bg-[#111111] hover:bg-[#333] text-white'}`}>
               <Plus className="w-4 h-4 mr-2" /> New Project
             </Button>
           </DialogTrigger>
@@ -79,35 +84,34 @@ export default function ProjectsView() {
         {projects.map((project) => (
           <div
             key={project.id}
-            className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer"
-            onClick={() => setSelectedProject(project)}
+            className={`border rounded-xl p-4 hover:shadow-sm transition-all cursor-pointer ${cardBg}`}
           >
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                <FolderOpen className="w-5 h-5 text-[#111111]" />
+              <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center`}>
+                <FolderOpen className={`w-5 h-5 ${textColor}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-[#111111] truncate">{project.name}</h3>
-                <p className="text-xs text-gray-400">{project.items.length} items</p>
+                <h3 className={`font-medium ${textColor} truncate`}>{project.name}</h3>
+                <p className={`text-xs ${mutedText}`}>{project.items.length} items</p>
               </div>
             </div>
             
             <div className="space-y-1">
               {project.items.slice(0, 3).map((item) => (
-                <div key={item.id} className="flex items-center gap-2 text-sm text-gray-600">
+                <div key={item.id} className={`flex items-center gap-2 text-sm ${mutedText}`}>
                   {getIcon(item.type)}
                   <span className="truncate">{item.name}</span>
                 </div>
               ))}
               {project.items.length > 3 && (
-                <p className="text-xs text-gray-400 pl-6">+{project.items.length - 3} more</p>
+                <p className={`text-xs ${mutedText} pl-6`}>+{project.items.length - 3} more</p>
               )}
             </div>
           </div>
         ))}
 
         {projects.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-400">
+          <div className={`col-span-full flex flex-col items-center justify-center py-16 ${mutedText}`}>
             <FolderOpen className="w-12 h-12 mb-3 opacity-30" />
             <p>No projects yet</p>
           </div>
