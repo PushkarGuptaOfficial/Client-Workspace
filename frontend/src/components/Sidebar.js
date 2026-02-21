@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
 import {
   MessageCircle, FolderOpen, ShoppingBag, Users, BarChart3,
   Settings, Bell, ChevronLeft, ChevronRight, LogOut
@@ -21,12 +19,15 @@ const NAV_ITEMS = {
   ]
 };
 
-export default function Sidebar({ activeView, setActiveView, folded, onToggle, onLogout, agent }) {
+export default function Sidebar({ activeView, setActiveView, folded, onToggle, onLogout, agent, isDark }) {
+  const bgColor = isDark ? 'bg-[#1a1a1a]' : 'bg-[#111111]';
+  const borderColor = isDark ? 'border-[#333]' : 'border-white/10';
+
   return (
     <TooltipProvider delayDuration={100}>
-      <aside className={`hidden md:flex flex-col bg-[#111111] text-white transition-all duration-300 ${folded ? 'w-16' : 'w-56'}`}>
+      <aside className={`hidden md:flex flex-col ${bgColor} text-white transition-all duration-300 ${folded ? 'w-16' : 'w-56'}`}>
         {/* Toggle Button */}
-        <div className="p-3 flex justify-end border-b border-white/10">
+        <div className={`p-3 flex justify-end border-b ${borderColor}`}>
           <Button
             variant="ghost"
             size="icon"
@@ -40,7 +41,7 @@ export default function Sidebar({ activeView, setActiveView, folded, onToggle, o
 
         {/* Agent Profile */}
         {agent && (
-          <div className={`p-3 border-b border-white/10 ${folded ? 'flex justify-center' : ''}`}>
+          <div className={`p-3 border-b ${borderColor} ${folded ? 'flex justify-center' : ''}`}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className={`flex items-center gap-3 ${folded ? 'justify-center' : ''}`}>
@@ -98,7 +99,7 @@ export default function Sidebar({ activeView, setActiveView, folded, onToggle, o
         </nav>
 
         {/* Logout */}
-        <div className="p-3 border-t border-white/10">
+        <div className={`p-3 border-t ${borderColor}`}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
