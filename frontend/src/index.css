@@ -162,6 +162,18 @@ code {
     height: 100dvh;
 }
 
+/* Safe area for mobile bottom nav */
+.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* PWA standalone mode */
+@media (display-mode: standalone) {
+    .safe-area-bottom {
+        padding-bottom: calc(env(safe-area-inset-bottom) + 8px);
+    }
+}
+
 @layer base {
     [data-debug-wrapper="true"] {
         display: contents !important;
