@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { MessageCircle, Send, Paperclip, Image, X, Moon, Sun, Loader2 } from 'lucide-react';
+import { MessageCircle, Send, Paperclip, X, Moon, Sun, Loader2, Camera } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { useTheme } from '../context/ThemeContext';
 import { toast } from 'sonner';
@@ -15,14 +15,28 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const STORAGE_KEYS = {
   VISITOR_ID: 'chat_visitor_id',
   SESSION_ID: 'chat_session_id',
-  VISITOR_NAME: 'chat_visitor_name'
+  VISITOR_NAME: 'chat_visitor_name',
+  VISITOR_PHOTO: 'chat_visitor_photo'
+};
+
+// Generate consistent color from name
+const getAvatarColor = (name) => {
+  const colors = [
+    'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500',
+    'bg-lime-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500',
+    'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500',
+    'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500',
+  ];
+  const hash = (name || 'V').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return colors[hash % colors.length];
 };
 
 export default function VisitorChat() {
   const { sessionId: urlSessionId } = useParams();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, isDark } = useTheme();
   const [visitorId, setVisitorId] = useState(null);
   const [visitorName, setVisitorName] = useState('');
+  const [visitorPhoto, setVisitorPhoto] = useState(null);
   const [sessionId, setSessionId] = useState(urlSessionId || null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -38,6 +52,16 @@ export default function VisitorChat() {
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const photoInputRef = useRef(null);
+
+  // Theme colors
+  const bgColor = isDark ? 'bg-[#111111]' : 'bg-white';
+  const textColor = isDark ? 'text-white' : 'text-[#111111]';
+  const mutedText = isDark ? 'text-gray-400' : 'text-gray-500';
+  const borderColor = isDark ? 'border-[#333]' : 'border-gray-200';
+  const cardBg = isDark ? 'bg-[#2a2a2a]' : 'bg-gray-100';
+  const inputBg = isDark ? 'bg-[#2a2a2a] border-[#333] text-white placeholder:text-gray-500' : 'border-gray-200';
+  const headerBg = isDark ? 'bg-[#111111]/90 backdrop-blur-xl' : 'bg-white/90 backdrop-blur-xl';
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,10 +77,10 @@ export default function VisitorChat() {
       const storedVisitorId = localStorage.getItem(STORAGE_KEYS.VISITOR_ID);
       const storedSessionId = urlSessionId || localStorage.getItem(STORAGE_KEYS.SESSION_ID);
       const storedName = localStorage.getItem(STORAGE_KEYS.VISITOR_NAME);
+      const storedPhoto = localStorage.getItem(STORAGE_KEYS.VISITOR_PHOTO);
 
       if (storedVisitorId && storedSessionId) {
         try {
-          // Verify session exists and is not closed
           const sessionRes = await axios.get(`${API}/sessions/${storedSessionId}`);
           const session = sessionRes.data;
           
@@ -64,23 +88,20 @@ export default function VisitorChat() {
             setVisitorId(storedVisitorId);
             setSessionId(storedSessionId);
             setVisitorName(storedName || 'Visitor');
+            setVisitorPhoto(storedPhoto);
             setShowNameInput(false);
 
-            // Load messages
             const messagesRes = await axios.get(`${API}/sessions/${storedSessionId}/messages`);
             setMessages(messagesRes.data);
 
-            // Check if agent is assigned
             if (session.assigned_agent_id) {
               const agentsRes = await axios.get(`${API}/agents`);
               const agent = agentsRes.data.find(a => a.id === session.assigned_agent_id);
               if (agent) setAgentName(agent.name);
             }
 
-            // Connect WebSocket
             connectWebSocket(storedSessionId, storedVisitorId);
           } else {
-            // Session closed, clear storage
             clearStoredSession();
           }
         } catch (error) {
@@ -98,26 +119,25 @@ export default function VisitorChat() {
     localStorage.removeItem(STORAGE_KEYS.VISITOR_ID);
     localStorage.removeItem(STORAGE_KEYS.SESSION_ID);
     localStorage.removeItem(STORAGE_KEYS.VISITOR_NAME);
+    localStorage.removeItem(STORAGE_KEYS.VISITOR_PHOTO);
   };
 
-  const saveSession = (vId, sId, name) => {
+  const saveSession = (vId, sId, name, photo = null) => {
     localStorage.setItem(STORAGE_KEYS.VISITOR_ID, vId);
     localStorage.setItem(STORAGE_KEYS.SESSION_ID, sId);
     localStorage.setItem(STORAGE_KEYS.VISITOR_NAME, name);
+    if (photo) localStorage.setItem(STORAGE_KEYS.VISITOR_PHOTO, photo);
   };
 
-  // Initialize visitor and session
   const startChat = async () => {
     if (!visitorName.trim()) {
       toast.error('Please enter your name');
       return;
     }
 
-    // Unlock audio on user action
     ensureAudioUnlocked();
 
     try {
-      // Create visitor
       const visitorRes = await axios.post(`${API}/visitors`, {
         name: visitorName,
         source: 'whatsapp'
@@ -125,20 +145,16 @@ export default function VisitorChat() {
       const visitor = visitorRes.data;
       setVisitorId(visitor.id);
 
-      // Create session
       const sessionRes = await axios.post(`${API}/sessions?visitor_id=${visitor.id}&visitor_name=${visitorName}`);
       const session = sessionRes.data;
       setSessionId(session.id);
       setShowNameInput(false);
 
-      // Save to localStorage
-      saveSession(visitor.id, session.id, visitorName);
+      saveSession(visitor.id, session.id, visitorName, visitorPhoto);
 
-      // Load existing messages (in case session already had messages)
       const messagesRes = await axios.get(`${API}/sessions/${session.id}/messages`);
       setMessages(messagesRes.data);
 
-      // Connect WebSocket
       connectWebSocket(session.id, visitor.id);
       
       toast.success('Connected! An agent will be with you shortly.');
@@ -161,10 +177,8 @@ export default function VisitorChat() {
       const data = JSON.parse(event.data);
       
       if (data.type === 'new_message') {
-        // Only add if it's from agent (visitor messages are added optimistically)
         if (data.message.sender_type === 'agent') {
           setMessages(prev => {
-            // Avoid duplicates
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
           });
@@ -208,7 +222,6 @@ export default function VisitorChat() {
     e?.preventDefault();
     if ((!newMessage.trim() && !pendingFile) || !wsRef.current || !isConnected) return;
 
-    // If there's a pending file, upload it first
     if (pendingFile) {
       setUploading(true);
       const formData = new FormData();
@@ -254,7 +267,6 @@ export default function VisitorChat() {
         setUploading(false);
       }
     } else {
-      // Text only message
       const messageData = {
         type: 'message',
         visitor_id: visitorId,
@@ -290,7 +302,6 @@ export default function VisitorChat() {
 
     setPendingFile(file);
     
-    // Create preview for images
     const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     if (imageExts.includes(ext)) {
@@ -304,6 +315,18 @@ export default function VisitorChat() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setVisitorPhoto(e.target.result);
+      localStorage.setItem(STORAGE_KEYS.VISITOR_PHOTO, e.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const clearPendingFile = () => {
     setPendingFile(null);
     setPendingPreview(null);
@@ -315,228 +338,258 @@ export default function VisitorChat() {
   };
 
   return (
-    <div className="visitor-chat bg-background" data-testid="visitor-chat">
+    <div className={`h-dvh flex flex-col ${bgColor}`} data-testid="visitor-chat">
       {/* Loading State */}
       {isRestoring ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <Loader2 className={`w-8 h-8 animate-spin ${isDark ? 'text-white' : 'text-[#111111]'}`} />
         </div>
       ) : (
         <>
           {/* Header */}
-          <header className="glass-header sticky top-0 z-10 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-            <MessageCircle className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="font-heading font-bold text-foreground">24gameapi</h1>
-            <p className="text-xs text-muted-foreground">
-              {isConnected ? (
-                agentName ? `Chatting with ${agentName}` : 'Waiting for agent...'
-              ) : (
-                'Start a conversation'
-              )}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          data-testid="theme-toggle"
-          className="rounded-full"
-        >
-          {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
-        </Button>
-      </header>
+          <header className={`sticky top-0 z-10 px-4 py-3 flex items-center justify-between border-b ${borderColor} ${headerBg}`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl ${isDark ? 'bg-white' : 'bg-[#111111]'} flex items-center justify-center`}>
+                <MessageCircle className={`w-5 h-5 ${isDark ? 'text-[#111111]' : 'text-white'}`} />
+              </div>
+              <div>
+                <h1 className={`font-bold ${textColor}`}>24gameapi</h1>
+                <p className={`text-xs ${mutedText}`}>
+                  {isConnected ? (
+                    agentName ? `Chatting with ${agentName}` : 'Waiting for agent...'
+                  ) : (
+                    'Start a conversation'
+                  )}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              data-testid="theme-toggle"
+              className="rounded-full"
+            >
+              {isDark ? <Sun className="w-5 h-5 text-white" /> : <Moon className="w-5 h-5" />}
+            </Button>
+          </header>
 
           {/* Name Input Screen */}
           {showNameInput ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
-          <div className="text-center">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <MessageCircle className="w-10 h-10 text-primary" />
-            </div>
-            <h2 className="font-heading text-2xl font-bold text-foreground mb-2">
-              Welcome to 24gameapi
-            </h2>
-            <p className="text-muted-foreground">
-              Enter your name to start chatting with our team
-            </p>
-          </div>
-          
-          <div className="w-full max-w-sm space-y-4">
-            <Input
-              placeholder="Your name"
-              value={visitorName}
-              onChange={(e) => setVisitorName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && startChat()}
-              data-testid="visitor-name-input"
-              className="h-12 text-center"
-            />
-            <Button
-              onClick={startChat}
-              className="w-full h-12 rounded-full font-medium"
-              data-testid="start-chat-btn"
-            >
-              Start Chat
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Messages Area */}
-          <ScrollArea className="flex-1 p-4" data-testid="messages-area">
-            <div className="messages-container max-w-2xl mx-auto py-2">
-              {messages.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">
-                    Send a message to start the conversation
-                  </p>
+            <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
+              <div className="text-center">
+                <div className={`w-20 h-20 mx-auto mb-4 rounded-2xl ${isDark ? 'bg-white/10' : 'bg-[#111111]/10'} flex items-center justify-center`}>
+                  <MessageCircle className={`w-10 h-10 ${isDark ? 'text-white' : 'text-[#111111]'}`} />
                 </div>
-              )}
+                <h2 className={`text-2xl font-bold ${textColor} mb-2`}>
+                  Welcome to 24gameapi
+                </h2>
+                <p className={mutedText}>
+                  Enter your name to start chatting with our team
+                </p>
+              </div>
               
-              {messages.map((msg, idx) => (
-                <div
-                  key={msg.id || idx}
-                  className={`message-row ${msg.sender_type === 'visitor' ? 'justify-end' : 'justify-start'} message-enter`}
-                  style={{ animationDelay: `${idx * 0.05}s` }}
-                >
-                  {msg.sender_type === 'agent' && (
-                    <Avatar className="w-8 h-8 mr-2 mt-1">
-                      <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
-                        {msg.sender_name?.[0] || 'A'}
+              <div className="w-full max-w-sm space-y-4">
+                {/* Photo Upload */}
+                <div className="flex justify-center">
+                  <div className="relative">
+                    <input
+                      type="file"
+                      ref={photoInputRef}
+                      onChange={handlePhotoUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <Avatar className="w-20 h-20 cursor-pointer" onClick={() => photoInputRef.current?.click()}>
+                      {visitorPhoto ? (
+                        <AvatarImage src={visitorPhoto} />
+                      ) : null}
+                      <AvatarFallback className={`text-2xl ${getAvatarColor(visitorName)} text-white`}>
+                        {visitorName?.[0]?.toUpperCase() || '?'}
                       </AvatarFallback>
                     </Avatar>
+                    <div className={`absolute bottom-0 right-0 w-7 h-7 rounded-full ${isDark ? 'bg-white text-[#111]' : 'bg-[#111111] text-white'} flex items-center justify-center cursor-pointer`} onClick={() => photoInputRef.current?.click()}>
+                      <Camera className="w-4 h-4" />
+                    </div>
+                  </div>
+                </div>
+
+                <Input
+                  placeholder="Your name"
+                  value={visitorName}
+                  onChange={(e) => setVisitorName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && startChat()}
+                  data-testid="visitor-name-input"
+                  className={`h-12 text-center rounded-full ${inputBg}`}
+                />
+                <Button
+                  onClick={startChat}
+                  className={`w-full h-12 rounded-full font-medium ${isDark ? 'bg-white text-[#111111] hover:bg-gray-100' : 'bg-[#111111] text-white hover:bg-[#333]'}`}
+                  data-testid="start-chat-btn"
+                >
+                  Start Chat
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Messages Area */}
+              <ScrollArea className="flex-1 p-4" data-testid="messages-area">
+                <div className="messages-container max-w-2xl mx-auto py-2">
+                  {messages.length === 0 && (
+                    <div className="text-center py-12">
+                      <p className={mutedText}>
+                        Send a message to start the conversation
+                      </p>
+                    </div>
                   )}
                   
-                  <div className={msg.sender_type === 'visitor' ? 'chat-bubble-visitor' : 'chat-bubble-agent'}>
-                    {msg.sender_type === 'agent' && (
-                      <p className="text-xs font-medium text-primary mb-1">{msg.sender_name}</p>
-                    )}
-                    
-                    {msg.message_type === 'image' && msg.file_url && (
-                      <div className="file-preview mb-2">
-                        <img
-                          src={`${process.env.REACT_APP_BACKEND_URL}${msg.file_url}`}
-                          alt="Shared"
-                          className="rounded-lg max-w-full"
-                        />
+                  {messages.map((msg, idx) => (
+                    <div
+                      key={msg.id || idx}
+                      className={`message-row ${msg.sender_type === 'visitor' ? 'justify-end' : 'justify-start'} message-enter`}
+                      style={{ animationDelay: `${idx * 0.05}s` }}
+                    >
+                      {msg.sender_type === 'agent' && (
+                        <Avatar className="w-8 h-8 mr-2 mt-1">
+                          <AvatarFallback className="bg-[#111111] text-white text-xs">
+                            {msg.sender_name?.[0] || 'A'}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                      
+                      <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
+                        msg.sender_type === 'visitor' 
+                          ? `${isDark ? 'bg-white text-[#111111]' : 'bg-[#111111] text-white'} rounded-br-sm` 
+                          : `${cardBg} ${textColor} rounded-bl-sm`
+                      }`}>
+                        {msg.sender_type === 'agent' && (
+                          <p className={`text-xs font-medium ${isDark ? 'text-white' : 'text-[#111111]'} mb-1`}>{msg.sender_name}</p>
+                        )}
+                        
+                        {msg.message_type === 'image' && msg.file_url && (
+                          <img
+                            src={`${process.env.REACT_APP_BACKEND_URL}${msg.file_url}`}
+                            alt="Shared"
+                            className="rounded-lg max-w-full mb-2"
+                          />
+                        )}
+                        
+                        {msg.message_type === 'file' && msg.file_url && (
+                          <a
+                            href={`${process.env.REACT_APP_BACKEND_URL}${msg.file_url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm underline"
+                          >
+                            <Paperclip className="w-4 h-4" />
+                            {msg.file_name}
+                          </a>
+                        )}
+                        
+                        {msg.message_type === 'text' && (
+                          <p className="text-sm">{msg.content}</p>
+                        )}
+                        
+                        <p className={`text-[10px] mt-1 ${
+                          msg.sender_type === 'visitor' 
+                            ? isDark ? 'text-[#111]/50' : 'text-white/60'
+                            : mutedText
+                        }`}>
+                          {formatTime(msg.created_at)}
+                        </p>
                       </div>
-                    )}
-                    
-                    {msg.message_type === 'file' && msg.file_url && (
-                      <a
-                        href={`${process.env.REACT_APP_BACKEND_URL}${msg.file_url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm underline"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        {msg.file_name}
-                      </a>
-                    )}
-                    
-                    {msg.message_type === 'text' && (
-                      <p className="text-sm">{msg.content}</p>
-                    )}
-                    
-                    <p className={`text-xs mt-1 ${msg.sender_type === 'visitor' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                      {formatTime(msg.created_at)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              
-              {isTyping && (
-                <div className="message-row justify-start">
-                  <div className="chat-bubble-agent">
-                    <div className="typing-indicator">
-                      <span></span>
-                      <span></span>
-                      <span></span>
                     </div>
-                  </div>
-                </div>
-              )}
-              
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
-
-          {/* Input Area */}
-          <div className="glass-input sticky bottom-0 p-4">
-            {/* Pending File Preview */}
-            {pendingFile && (
-              <div className="max-w-2xl mx-auto mb-2">
-                <div className="flex items-center gap-2 p-2 bg-muted rounded-xl">
-                  {pendingPreview ? (
-                    <img src={pendingPreview} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Paperclip className="w-5 h-5 text-primary" />
+                  ))}
+                  
+                  {isTyping && (
+                    <div className="message-row justify-start">
+                      <div className={`${cardBg} rounded-2xl rounded-bl-sm px-4 py-3`}>
+                        <div className="flex gap-1">
+                          <span className={`w-2 h-2 ${isDark ? 'bg-gray-500' : 'bg-gray-400'} rounded-full animate-bounce`} style={{animationDelay: '0ms'}} />
+                          <span className={`w-2 h-2 ${isDark ? 'bg-gray-500' : 'bg-gray-400'} rounded-full animate-bounce`} style={{animationDelay: '150ms'}} />
+                          <span className={`w-2 h-2 ${isDark ? 'bg-gray-500' : 'bg-gray-400'} rounded-full animate-bounce`} style={{animationDelay: '300ms'}} />
+                        </div>
+                      </div>
                     </div>
                   )}
-                  <span className="flex-1 text-sm truncate">{pendingFile.name}</span>
+                  
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              {/* Input Area */}
+              <div className={`sticky bottom-0 p-4 border-t ${borderColor} ${headerBg}`}>
+                {/* Pending File Preview */}
+                {pendingFile && (
+                  <div className="max-w-2xl mx-auto mb-2">
+                    <div className={`flex items-center gap-2 p-2 ${cardBg} rounded-xl`}>
+                      {pendingPreview ? (
+                        <img src={pendingPreview} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
+                      ) : (
+                        <div className={`w-12 h-12 rounded-lg ${isDark ? 'bg-[#333]' : 'bg-gray-200'} flex items-center justify-center`}>
+                          <Paperclip className={`w-5 h-5 ${mutedText}`} />
+                        </div>
+                      )}
+                      <span className={`flex-1 text-sm truncate ${mutedText}`}>{pendingFile.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={clearPendingFile}
+                        data-testid="remove-file-btn"
+                        className="rounded-full h-8 w-8 shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                <form onSubmit={sendMessage} className="max-w-2xl mx-auto flex items-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*,.pdf,.doc,.docx,.txt"
+                  />
+                  
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={clearPendingFile}
-                    data-testid="remove-file-btn"
-                    className="rounded-full h-8 w-8 shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!isConnected || uploading}
+                    data-testid="attach-file-btn"
+                    className="rounded-full shrink-0"
                   >
-                    <X className="w-4 h-4" />
+                    {uploading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Paperclip className={`w-5 h-5 ${mutedText}`} />
+                    )}
                   </Button>
-                </div>
+                  
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder={isConnected ? "Type a message..." : "Connecting..."}
+                    disabled={!isConnected}
+                    data-testid="message-input"
+                    className={`flex-1 h-12 rounded-full ${inputBg}`}
+                  />
+                  
+                  <Button
+                    type="submit"
+                    disabled={(!newMessage.trim() && !pendingFile) || !isConnected || uploading}
+                    data-testid="send-message-btn"
+                    className={`rounded-full h-12 w-12 shrink-0 ${isDark ? 'bg-white text-[#111111] hover:bg-gray-100' : 'bg-[#111111] hover:bg-[#333]'}`}
+                  >
+                    <Send className="w-5 h-5" />
+                  </Button>
+                </form>
               </div>
-            )}
-            
-            <form onSubmit={sendMessage} className="max-w-2xl mx-auto flex items-center gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-                accept="image/*,.pdf,.doc,.docx,.txt"
-              />
-              
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!isConnected || uploading}
-                data-testid="attach-file-btn"
-                className="rounded-full shrink-0"
-              >
-                {uploading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Paperclip className="w-5 h-5" />
-                )}
-              </Button>
-              
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={isConnected ? "Type a message..." : "Connecting..."}
-                disabled={!isConnected}
-                data-testid="message-input"
-                className="flex-1 h-12 rounded-full"
-              />
-              
-              <Button
-                type="submit"
-                disabled={(!newMessage.trim() && !pendingFile) || !isConnected || uploading}
-                data-testid="send-message-btn"
-                className="rounded-full h-12 w-12 shrink-0"
-              >
-                <Send className="w-5 h-5" />
-              </Button>
-            </form>
-          </div>
             </>
           )}
         </>
